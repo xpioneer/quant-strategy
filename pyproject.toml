@@ -1,0 +1,54 @@
+[project]
+name = "stock-quant-strategy"
+version = "1.0.0"
+description = "Quantification Trade Strategy System"
+requires-python = ">=3.10"
+dependencies = [
+    "fastapi>=0.139.0",
+    "uvicorn[standard]>=0.50.0",
+    "sqlalchemy>=2.0.50",
+    "pydantic>=2.13.0",
+    "pydantic-settings>=2.14.0",
+    "pandas>=2.2.0,<3.0.0",
+    "polars>=1.42.0",
+    "backtrader>=1.9.78.123",
+    "akshare>=1.18.0",
+    "tushare>=1.4.0",
+    "psycopg2-binary>=2.9.0",
+    "redis>=8.0.0",
+    "apscheduler>=3.11.0",
+    "loguru>=0.7.0",
+    "python-multipart>=0.0.12",
+    "humps>=0.2.2",
+]
+[project.optional-dependencies]
+dev = [
+    "pytest>=9.0.0",
+    "httpx2>=2.5.0",
+    "ruff>=0.15.0",
+    "black>=26.0.0",
+    "isort>=5.13.0",
+    "mypy>=2.0.0",
+    "alembic>=1.14.0",
+]
+
+[project.scripts]
+start = "app.main:main"
+
+[tool.setuptools.packages.find]
+include = ["app*"]  # 只包含 app 及其子包
+
+[tool.black]
+line-length = 120
+target-version = ['py310', 'py311', 'py312', 'py313']
+
+[tool.ruff]
+line-length = 120
+select = ["E", "F", "W", "I", "N", "UP"]
+ignore = ["E501"]
+
+[tool.ruff.lint.mccabe]
+max-complexity = 10
+
+[tool.uv]
+index-url = "https://pypi.org/simple"
