@@ -26,6 +26,10 @@ class Kline(Base):
     close = Column(Float)
     volume = Column(Float)
     amount = Column(Float)
+    amplitude = Column(Float)
+    pct_change = Column(Float)
+    change = Column(Float)
+    turnover_rate = Column(Float)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
 

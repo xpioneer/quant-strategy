@@ -20,8 +20,9 @@ app = FastAPI(
 )
 
 try:
-    from app.database import Base, engine
+    from app.database import Base, engine, ensure_kline_columns
     Base.metadata.create_all(bind=engine)
+    ensure_kline_columns()
     logger.info("数据库初始化成功")
 except Exception as e:
     logger.warning(f"数据库初始化失败（可以稍后配置）: {e}")
