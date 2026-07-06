@@ -10,3 +10,9 @@ class MarketService:
 
     def get_kline_data(self, symbol: str, start_date: str | None = None, end_date: str | None = None, period: str = "daily"):
         return self.data_loader.load_kline_data(symbol=symbol, start_date=start_date, end_date=end_date, period=period)
+
+    def get_kline_data_v2(self, symbol: str, start_date: str | None = None, end_date: str | None = None, period: str = "daily"):
+        return self.data_loader.load_kline_data_v2(symbol=symbol, start_date=start_date, end_date=end_date, period=period)
+
+    def delete_symbol(self, symbol: str, period: str = "daily"):
+        return self.data_loader.delete_symbol(symbol=symbol, period=period)

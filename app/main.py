@@ -4,6 +4,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from humps.camel import case as camel_case
 from loguru import logger
+from datetime import datetime, timezone
 from app.config.settings import get_settings
 from app.common.dashboard import router as dashboard_router
 from app.market.api import router as market_router
@@ -101,7 +102,8 @@ async def health_check():
         "status": 200,
         "msg": "success",
         "data": {
-            "status": "healthy"
+            "status": "healthy",
+            "time": datetime.now()
         }
     }
 
