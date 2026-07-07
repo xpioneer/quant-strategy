@@ -1,7 +1,7 @@
 # app/strategy/backtest.py
 import pandas as pd
 import numpy as np
-from typing import Dict, Any
+from typing import Dict, Any, List
 from .base import BaseStrategy
 
 class BacktestEngine:
@@ -23,20 +23,21 @@ class BacktestEngine:
         # 生成信号
         signals = strategy.generate_signals(df)
         
-        # 回测模拟
-        capital = self.initial_capital
+        # ===== 逐日模拟交易 =====
+        cash = self.initial_capital
         position = 0  # 持仓数量
-        cash = capital
         trades = []   # 交易记录
+        daily_values = []  # 每日资产记录
         
         for i in range(len(df)):
             signal = signals.iloc[i]
             price = df.iloc[i]["close"]
             date = df.iloc[i]["date"]
             
+            # 处理交易信号
             if signal == 1 and cash > 0:  # 买入
-                shares = cash // (price * (1 + commission))
-                cost = shares * price * (1 + commission)
+                shares = int(cash // (price * (1 + commission)))
+                cost = round(shares * price * (1 + commission), 2)
                 cash -= cost
                 position += shares
                 trades.append({
@@ -45,11 +46,11 @@ class BacktestEngine:
                     "price": price,
                     "shares": shares,
                     "cost": cost,
-                    "cash_after": cash
+                    "cash_after": round(cash, 2)
                 })
                 
             elif signal == -1 and position > 0:  # 卖出
-                revenue = position * price * (1 - commission)
+                revenue = round(position * price * (1 - commission), 2)
                 cash += revenue
                 trades.append({
                     "date": date,
@@ -57,28 +58,57 @@ class BacktestEngine:
                     "price": price,
                     "shares": position,
                     "revenue": revenue,
-                    "cash_after": cash
+                    "cash_after": round(cash, 2)
                 })
                 position = 0
+            
+            # ===== ★ 关键修复：每天计算真实资产价值 =====
+            portfolio_value = round(cash + position * price, 2)
+            daily_values.append({
+                "date": date,
+                "portfolio_value": portfolio_value,
+                "cash": round(cash, 2),
+                "position": position,
+                "price": price
+            })
         
         # 计算绩效
-        final_value = cash + position * df.iloc[-1]["close"]
-        total_return = (final_value - self.initial_capital) / self.initial_capital * 100
+        final_value = daily_values[-1]["portfolio_value"]
+        total_return = round((final_value - self.initial_capital) / self.initial_capital * 100, 2)
         
-        # 计算每日收益率（用于夏普比率等）
-        df["portfolio_value"] = cash + position * df["close"]
-        df["daily_return"] = df["portfolio_value"].pct_change()
+        # 计算每日收益率（用于夏普比率）
+        returns = []
+        for j in range(1, len(daily_values)):
+            prev_val = daily_values[j-1]["portfolio_value"]
+            curr_val = daily_values[j]["portfolio_value"]
+            if prev_val > 0:
+                returns.append((curr_val - prev_val) / prev_val)
+            else:
+                returns.append(0)
         
-        sharpe = np.sqrt(252) * df["daily_return"].mean() / df["daily_return"].std() if df["daily_return"].std() > 0 else 0
-        max_drawdown = (df["portfolio_value"].cummax() - df["portfolio_value"]).max() / df["portfolio_value"].cummax().max() * 100
+        daily_returns = np.array(returns)
+        sharpe = 0
+        if len(daily_returns) > 0 and daily_returns.std() > 0:
+            sharpe = round(np.sqrt(252) * daily_returns.mean() / daily_returns.std(), 2)
+        
+        # 计算最大回撤
+        values = [v["portfolio_value"] for v in daily_values]
+        peak = values[0]
+        max_drawdown = 0
+        for v in values:
+            if v > peak:
+                peak = v
+            drawdown = round((peak - v) / peak * 100, 2)
+            if drawdown > max_drawdown:
+                max_drawdown = drawdown
         
         return {
             "initial_capital": self.initial_capital,
-            "final_value": round(final_value, 2),
-            "total_return": round(total_return, 2),
-            "sharpe_ratio": round(sharpe, 2),
-            "max_drawdown": round(max_drawdown, 2),
+            "final_value": final_value,
+            "total_return": total_return,
+            "sharpe_ratio": sharpe,
+            "max_drawdown": max_drawdown,
             "total_trades": len([t for t in trades if t["type"] == "buy"]),
             "trades": trades,
-            "equity_curve": df[["date", "portfolio_value"]].to_dict("records")
+            "equity_curve": daily_values
         }
