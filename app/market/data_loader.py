@@ -323,8 +323,73 @@ class MarketDataLoader:
 
     def _fetch_full_history_from_akshare_v2(self, symbol: str, period: str = 'daily') -> pd.DataFrame:
         """
-        从 AKShare 拉取全部历史数据（带防封禁机制）
+        从远程拉取全部历史数据
+        优先使用 yfinance（最稳定），失败降级 AKShare
         """
+        is_a_share = bool(re.match(r'^\d{6}$', symbol))
+        
+        # ===== 1. 先试 yfinance =====
+        try:
+            import yfinance as yf
+            
+            if is_a_share:
+                # A股代码转换：000333 → 000333.SZ, 600519 → 600519.SS
+                suffix = ".SZ" if symbol.startswith(("0", "3")) else ".SS"
+                yf_symbol = f"{symbol}{suffix}"
+            else:
+                # 美股直接使用
+                yf_symbol = symbol.upper()
+            
+            print(f"[INFO] 尝试 yfinance 获取 {yf_symbol} ...")
+            ticker = yf.Ticker(yf_symbol)
+            df_yf = ticker.history(period="max", auto_adjust=True)
+            
+            if df_yf is not None and not df_yf.empty:
+                print(f"[INFO] yfinance 成功获取 {symbol} ({len(df_yf)} 条)")
+                return self._normalize_yfinance_df(df_yf, symbol)
+            else:
+                print(f"[WARN] yfinance 返回空数据 {yf_symbol}")
+        
+        except ImportError:
+            print("[WARN] yfinance 未安装，跳过")
+        except Exception as e:
+            print(f"[WARN] yfinance 获取失败 {symbol}: {e}")
+        
+        # ===== 2. yfinance 失败，降级 AKShare =====
+        print(f"[INFO] 降级 AKShare 获取 {symbol} ...")
+        return self._fetch_from_akshare(symbol, period)
+    
+    def _normalize_yfinance_df(self, df: pd.DataFrame, symbol: str) -> pd.DataFrame:
+        """标准化 yfinance 返回的 DataFrame"""
+        df = df.copy()
+        df = df.reset_index()
+        df.columns = [c.lower() for c in df.columns]
+        
+        normalized = pd.DataFrame()
+        normalized["date"] = pd.to_datetime(df["date"])
+        normalized["open"] = pd.to_numeric(df["open"], errors="coerce")
+        normalized["high"] = pd.to_numeric(df["high"], errors="coerce")
+        normalized["low"] = pd.to_numeric(df["low"], errors="coerce")
+        normalized["close"] = pd.to_numeric(df["close"], errors="coerce")
+        normalized["volume"] = pd.to_numeric(df["volume"], errors="coerce")
+        
+        # Yahoo 无成交额，用 volume * close 近似
+        normalized["amount"] = normalized["volume"] * normalized["close"]
+        
+        # 自行计算涨跌幅
+        normalized["pct_change"] = normalized["close"].pct_change() * 100
+        normalized["change"] = normalized["close"].diff()
+        normalized["amplitude"] = (normalized["high"] - normalized["low"]) / normalized["close"].shift(1) * 100
+        normalized["turnover_rate"] = pd.NA
+        normalized["symbol"] = symbol
+        
+        normalized = normalized.dropna(subset=["close"])
+        normalized = normalized.sort_values("date").reset_index(drop=True)
+        
+        return normalized
+
+    def _fetch_from_akshare(self, symbol: str, period: str = 'daily') -> pd.DataFrame:
+        """原有的 AKShare 拉取逻辑（带防封禁）"""
         import akshare as ak
         
         is_a_share = bool(re.match(r'^\d{6}$', symbol))
@@ -367,14 +432,26 @@ class MarketDataLoader:
                             "adjust": "qfq"
                         }
                     })
+                # 加新浪兜底
+                if hasattr(ak, "stock_zh_a_daily"):
+                    sina_code = ("sh" if symbol.startswith("6") else "sz") + symbol
+                    fetch_targets.append({
+                        "func": ak.stock_zh_a_daily,
+                        "params": {
+                            "symbol": sina_code,
+                            "start_date": "19900101",
+                            "end_date": datetime.now().strftime("%Y%m%d"),
+                            "adjust": "qfq"
+                        }
+                    })
             else:
                 if hasattr(ak, "stock_us_daily"):
                     fetch_targets.append({
                         "func": ak.stock_us_daily,
                         "params": {
                             "symbol": symbol,
-                            "start_date": "19700101",
-                            "end_date": datetime.now().strftime("%Y%m%d")
+                            # "start_date": "19700101",
+                            # "end_date": datetime.now().strftime("%Y%m%d")
                         }
                     })
             
@@ -393,17 +470,16 @@ class MarketDataLoader:
                     try:
                         # ★ 关键：每次请求前随机等待 0.5~1.5 秒
                         time.sleep(random.uniform(0.5, 1.5))
-                        
                         df_raw = func(**params)
                         if df_raw is not None and not df_raw.empty:
-                            print(f"[INFO] 成功获取 {symbol} 数据 ({len(df_raw)} 条)")
+                            print(f"[INFO] AKShare 成功获取 {symbol} ({len(df_raw)} 条)")
                             break
                             
                     except (ConnectionAbortedError, ConnectionResetError, 
                             requests.exceptions.ConnectionError) as e:
                         last_err = e
                         if attempt < 2:
-                            wait_time = (attempt + 1) * 3  # 3s, 6s
+                            wait_time = (attempt + 1) * 3
                             print(f"[WARN] 连接断开，{wait_time}s 后重试 ({attempt+1}/3)...")
                             time.sleep(wait_time)
                         continue
@@ -421,10 +497,14 @@ class MarketDataLoader:
                     raise RuntimeError(f"AKShare fetch failed for {symbol}: {last_err}")
                 return pd.DataFrame()
             
-            # ===== 5. 标准化列名（你的原有逻辑不变）=====
+            # 标准化 AKShare 数据
             df = df_raw.copy()
             if not isinstance(df.index, pd.RangeIndex):
                 df = df.reset_index()
+            
+            # 如果是新浪数据，日期可能在 index 里
+            if "date" not in df.columns:
+                df = df.rename(columns={df.columns[0]: "date"})
             
             col_map = {}
             candidates = {
@@ -520,7 +600,6 @@ class MarketDataLoader:
         finally:
             # 恢复原始的 requests.get，避免影响其他地方
             requests.get = original_get
-
 
     def _fetch_full_history_from_akshare(self, symbol: str, period: str = 'daily') -> pd.DataFrame:
         """
