@@ -13,7 +13,7 @@ class MACrossStrategy(BaseStrategy):
     
     def generate_signals(self, df: pd.DataFrame) -> pd.Series:
         fast = self.params.get("fast_period", 5)
-        slow = self.params.get("slow_period", 20)
+        slow = self.params.get("slow_period", 10)
         
         # 计算均线
         df = df.copy()

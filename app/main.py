@@ -17,7 +17,7 @@ settings = get_settings()
 
 # 不需要转换的路径规则
 SKIP_PATH_PATTERNS = [
-    r"^/api",          # 所有 API 接口
+    # r"^/api",          # 所有 API 接口
     r"^/docs",         # Swagger 文档
     r"^/redoc",        # ReDoc 文档
     r"^/openapi\.json", # OpenAPI 规范

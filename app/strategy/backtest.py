@@ -4,111 +4,105 @@ import numpy as np
 from typing import Dict, Any, List
 from .base import BaseStrategy
 
+
 class BacktestEngine:
-    """回测引擎"""
-    
-    def __init__(self, initial_capital: float = 100000.0):
+    def __init__(self, initial_capital: float = 100_000.0):
         self.initial_capital = initial_capital
-        
-    def run(self, df: pd.DataFrame, strategy: BaseStrategy, 
-            commission: float = 0.0003) -> Dict[str, Any]:
-        """
-        执行回测
-        df: 包含 date, open, high, low, close, volume 的 DataFrame
-        strategy: 策略实例
-        commission: 手续费率 (默认万三)
-        """
+
+    def run(
+        self,
+        df: pd.DataFrame,
+        strategy: BaseStrategy,
+        commission: float = 0.0003,
+    ) -> Dict[str, Any]:
         df = df.copy().sort_values("date").reset_index(drop=True)
-        
-        # 生成信号
+
         signals = strategy.generate_signals(df)
-        
-        # ===== 逐日模拟交易 =====
+
         cash = self.initial_capital
-        position = 0  # 持仓数量
-        trades = []   # 交易记录
-        daily_values = []  # 每日资产记录
-        
+        position = 0          # ★ 当天持仓股数
+        buy_price = None      # 记录最后一次买入价（用于止损等）
+        trades: List[Dict] = []
+        equity: List[Dict] = []
+
         for i in range(len(df)):
-            signal = signals.iloc[i]
-            price = df.iloc[i]["close"]
-            date = df.iloc[i]["date"]
-            
-            # 处理交易信号
-            if signal == 1 and cash > 0:  # 买入
+            sig = signals.iloc[i]
+            price = float(df.at[i, "close"])
+            date = df.at[i, "date"]
+
+            # ---- 执行交易 ----
+            if sig == 1 and cash > 0:          # 买入
                 shares = int(cash // (price * (1 + commission)))
-                cost = round(shares * price * (1 + commission), 2)
-                cash -= cost
-                position += shares
-                trades.append({
-                    "date": date,
-                    "type": "buy",
-                    "price": price,
-                    "shares": shares,
-                    "cost": cost,
-                    "cash_after": round(cash, 2)
-                })
-                
-            elif signal == -1 and position > 0:  # 卖出
-                revenue = round(position * price * (1 - commission), 2)
+                if shares > 0:
+                    cost = shares * price * (1 + commission)
+                    cash -= cost
+                    position += shares
+                    buy_price = price
+                    trades.append({
+                        "date": date,
+                        "type": "buy",
+                        "price": price,
+                        "shares": shares,
+                        "cost": round(cost, 2),
+                        "cash_after": round(cash, 2),
+                    })
+
+            elif sig == -1 and position > 0:   # 卖出
+                revenue = position * price * (1 - commission)
                 cash += revenue
                 trades.append({
                     "date": date,
                     "type": "sell",
                     "price": price,
                     "shares": position,
-                    "revenue": revenue,
-                    "cash_after": round(cash, 2)
+                    "revenue": round(revenue, 2),
+                    "cash_after": round(cash, 2),
                 })
                 position = 0
-            
-            # ===== ★ 关键修复：每天计算真实资产价值 =====
+                buy_price = None
+
+            # ★★★ 关键：用【当天真实 cash 和 position】算资产 ★★★
             portfolio_value = round(cash + position * price, 2)
-            daily_values.append({
+            equity.append({
                 "date": date,
                 "portfolio_value": portfolio_value,
                 "cash": round(cash, 2),
                 "position": position,
-                "price": price
             })
-        
-        # 计算绩效
-        final_value = daily_values[-1]["portfolio_value"]
-        total_return = round((final_value - self.initial_capital) / self.initial_capital * 100, 2)
-        
-        # 计算每日收益率（用于夏普比率）
-        returns = []
-        for j in range(1, len(daily_values)):
-            prev_val = daily_values[j-1]["portfolio_value"]
-            curr_val = daily_values[j]["portfolio_value"]
-            if prev_val > 0:
-                returns.append((curr_val - prev_val) / prev_val)
-            else:
-                returns.append(0)
-        
-        daily_returns = np.array(returns)
-        sharpe = 0
-        if len(daily_returns) > 0 and daily_returns.std() > 0:
-            sharpe = round(np.sqrt(252) * daily_returns.mean() / daily_returns.std(), 2)
-        
-        # 计算最大回撤
-        values = [v["portfolio_value"] for v in daily_values]
-        peak = values[0]
-        max_drawdown = 0
-        for v in values:
-            if v > peak:
-                peak = v
-            drawdown = round((peak - v) / peak * 100, 2)
-            if drawdown > max_drawdown:
-                max_drawdown = drawdown
-        
+
+        # ---- 绩效 ----
+        final_value = equity[-1]["portfolio_value"]
+        total_return = (final_value - self.initial_capital) / self.initial_capital * 100
+
+        # 日收益率
+        rets = []
+        for j in range(1, len(equity)):
+            prev = equity[j - 1]["portfolio_value"]
+            cur = equity[j]["portfolio_value"]
+            rets.append((cur - prev) / prev if prev else 0)
+        rets = np.array(rets)
+        sharpe = 0.0
+        if rets.std() > 0:
+            sharpe = round(np.sqrt(252) * rets.mean() / rets.std(), 2)
+
+        # 最大回撤
+        peak = equity[0]["portfolio_value"]
+        max_dd = 0.0
+        for v in equity:
+            pv = v["portfolio_value"]
+            if pv > peak:
+                peak = pv
+            dd = (peak - pv) / peak * 100
+            if dd > max_dd:
+                max_dd = dd
+
         return {
             "initial_capital": self.initial_capital,
-            "final_value": final_value,
-            "total_return": total_return,
+            "final_value": round(final_value, 2),
+            "total_return": round(total_return, 2),
             "sharpe_ratio": sharpe,
-            "max_drawdown": max_drawdown,
-            "total_trades": len([t for t in trades if t["type"] == "buy"]),
+            "max_drawdown": round(max_dd, 2),
+            "total_trades": sum(1 for t in trades if t["type"] == "buy"),
             "trades": trades,
-            "equity_curve": daily_values
+            "equity_curve": equity,
         }

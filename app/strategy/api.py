@@ -1,12 +1,30 @@
 from fastapi import APIRouter, Query, Body
 from loguru import logger
+from sqlalchemy import Enum
 from app.common.schemas import Response
-from ..strategy.backtest import BacktestEngine
-from ..strategy.strategies.ma_cross import MACrossStrategy
-from ..strategy.strategies.rsi import RSIStrategy
+from .backtest import BacktestEngine
+from .strategies.ma_cross import MACrossStrategy
+from .strategies.macd import MACDStrategy
+from .strategies.vwap import VWAPStrategy
+from .strategies.rsi import RSIStrategy
+from .strategies.z_score import ZScoreStrategy
+from .strategies.bollinger import BollingerStrategy
+from .strategies.turtle import TurtleStrategy
+from .strategies.double_bottom import DoubleBottomStrategy
 from ..market.service import MarketService
 
 router = APIRouter()
+
+class StrategyType(str, Enum):
+    """策略类型枚举（继承 str 使其可 JSON 序列化）"""
+    MA_CROSS = "ma_cross"
+    MACD = "macd"
+    VWAP = "vwap"
+    RSI = "rsi"
+    Z_SCORE = "z_score"
+    BOLLINGER_BANDS = "bollinger_bands"
+    TURTLE = "turtle"
+    DOUBLE_BOTTOM = "double_bottom"
 
 
 @router.get("/strategies", response_model=Response[list])
@@ -71,13 +89,25 @@ def run_backtest(
         return {"error": f"没有 {symbol} 的数据"}
     
     # 选择策略
-    if strategy_type == "ma_cross":
+    if strategy_type == StrategyType.MA_CROSS:
         strategy = MACrossStrategy(params={
             "fast_period": fast_period,
             "slow_period": slow_period
         })
-    elif strategy_type == "rsi":
+    elif strategy_type == StrategyType.MACD:
+        strategy = MACDStrategy(params={"fast": 12})
+    elif strategy_type == StrategyType.VWAP:
+        strategy = VWAPStrategy(params={"period": 20})
+    elif strategy_type == StrategyType.RSI:
         strategy = RSIStrategy(params={"period": fast_period})
+    elif strategy_type == StrategyType.Z_SCORE:
+        strategy = ZScoreStrategy(params={"period": 20})
+    elif strategy_type == StrategyType.BOLLINGER_BANDS:
+        strategy = BollingerStrategy(params={"period": 20})
+    elif strategy_type == StrategyType.TURTLE:
+        strategy = TurtleStrategy(params={"period": 20})
+    elif strategy_type == StrategyType.DOUBLE_BOTTOM:
+        strategy = DoubleBottomStrategy(params={"period": 30})
     else:
         return {"error": f"未知策略: {strategy_type}"}
     
