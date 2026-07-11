@@ -81,7 +81,7 @@ def run_backtest(
     """运行策略回测"""
     # 获取 K 线数据
     market_service = MarketService()
-    df, is_local = market_service.get_kline_data_v2(
+    df, is_local = market_service.get_kline_data(
         symbol=symbol, start_date=start_date, end_date=end_date
     )
     
