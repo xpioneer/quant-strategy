@@ -28,7 +28,7 @@ def get_kline(symbol: str, start_date: str | None = None, end_date: str | None =
 
 @router.get("/stock/{symbol}")
 def get_kline(symbol: str, start_date: str | None = None, end_date: str | None = None, period: str = "daily"):
-    df, local = market_service.get_kline_data_v2(symbol=symbol, start_date=start_date, end_date=end_date, period=period)
+    df, local = market_service.get_kline_data_with_provider(symbol=symbol, start_date=start_date, end_date=end_date, period=period)
     return Response(data={
         "symbol": symbol,
         "period": period,
