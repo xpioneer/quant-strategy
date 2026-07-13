@@ -94,18 +94,19 @@ uv run uvicorn app.main:app --reload
 
 ## API 端点
 
-配合前端代理 `/py-api`，可通过以下地址访问：
+直接访问：
+- `GET /` - 服务状态
+- `GET /health` - 健康检查
 
-- `GET /py-api/` - 服务状态
-- `GET /py-api/health` - 健康检查
-- `GET /py-api/api/v1/dashboard/overview` - 仪表板概览
-- `GET /py-api/api/v1/market/stocks` - 获取股票列表
-- `GET /py-api/api/v1/market/kline/{symbol}` - 获取K线数据
-- `GET /py-api/api/v1/indicator/indicators/{symbol}` - 获取指标数据
-- `GET /py-api/api/v1/strategy/strategies` - 获取策略列表
-- `GET /py-api/api/v1/strategy/available-strategies` - 获取可用策略
-- `POST /py-api/api/v1/backtest/run` - 运行回测
-- `POST /py-api/api/v1/backtest/compare` - 对比策略
+配合前端代理 `/api`，可通过以下地址访问：
+- `GET /api/v1/dashboard/overview` - 仪表板概览
+- `GET /api/v1/market/stocks` - 获取股票列表
+- `GET /api/v1/market/kline/{symbol}` - 获取K线数据
+- `GET /api/v1/indicator/indicators/{symbol}` - 获取指标数据
+- `GET /api/v1/strategy/strategies` - 获取策略列表
+- `GET /api/v1/strategy/available-strategies` - 获取可用策略
+- `POST /api/v1/backtest/run` - 运行回测
+- `POST /api/v1/backtest/compare` - 对比策略
 
 ## 开发命令
 
