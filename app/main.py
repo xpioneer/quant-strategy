@@ -7,22 +7,13 @@ from loguru import logger
 from datetime import datetime, timezone
 from app.config.settings import get_settings
 from app.common.dashboard import router as dashboard_router
+from app.utils.tools import is_skip_path
 from app.market.api import router as market_router
 from app.indicator.api import router as indicator_router
 from app.strategy.api import router as strategy_router
 from app.backtest.api import router as backtest_router
 
 settings = get_settings()
-
-
-# 不需要转换的路径规则
-SKIP_PATH_PATTERNS = [
-    # r"^/api",          # 所有 API 接口
-    r"^/docs",         # Swagger 文档
-    r"^/redoc",        # ReDoc 文档
-    r"^/openapi\.json", # OpenAPI 规范
-]
-
 
 app = FastAPI(
     title=settings.app_name,
@@ -49,9 +40,8 @@ app.include_router(backtest_router, prefix=f"{settings.api_prefix}/backtest", ta
 async def camelize_response_keys(request: Request, call_next):
     # 检查路径是否需要跳过
     path = request.url.path
-    for pattern in SKIP_PATH_PATTERNS:
-        if re.match(pattern, path):
-            return await call_next(request)  # 跳过转换
+    if is_skip_path(path):
+        return await call_next(request)  # 跳过转换
     
     response = await call_next(request)
     content_type = response.headers.get("content-type", "")

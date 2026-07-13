@@ -16,6 +16,12 @@ class Settings(BaseSettings):
 
     model_config = SettingsConfigDict(env_file=".env")
 
+# 不需要转换的路径规则
+SKIP_PATH_PATTERNS: list[str] = [
+    r"^/docs",         # Swagger 文档
+    r"^/redoc",        # ReDoc 文档
+    r"^/openapi\.json", # OpenAPI 规范
+]
 
 @lru_cache()
 def get_settings() -> Settings:
